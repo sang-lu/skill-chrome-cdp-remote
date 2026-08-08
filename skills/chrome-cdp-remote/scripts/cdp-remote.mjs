@@ -750,7 +750,10 @@ Usage: cdp-remote.mjs <command> [args]
   evalraw <target> <method> [json]  Send a raw CDP command; returns JSON result
                                     e.g. evalraw <t> "DOM.getDocument" '{}'
   open  [url]                       Open a new tab (default: about:blank)
-  stop  [target]                    Stop daemon(s)
+  close <target>                    Close a tab in the remote browser (Target.closeTarget)
+  stop  [target]                    Stop local daemon(s) only — does NOT close the tab,
+                                    it just ends this CLI's session with it. Use "close"
+                                    to actually close the tab in the remote browser.
 
 <target> is a unique targetId prefix from "list". If a prefix is ambiguous,
 use more characters.
@@ -826,6 +829,45 @@ async function main() {
 
   if (cmd === 'stop') {
     await stopDaemons(args[0]);
+    return;
+  }
+
+  if (cmd === 'close') {
+    const targetPrefix = args[0];
+    if (!targetPrefix) {
+      console.error('Error: target ID required. Run "list" first.');
+      process.exit(1);
+    }
+    if (!existsSync(PAGES_CACHE)) {
+      console.error('No page list cached. Run "list" first.');
+      process.exit(1);
+    }
+    const pages = JSON.parse(readFileSync(PAGES_CACHE, 'utf8'));
+    const targetId = resolvePrefix(targetPrefix, pages.map(p => p.targetId), 'target', 'Run "list".');
+
+    const cdp = new CDP();
+    await cdp.connect(await getWsUrl());
+    let success = false;
+    try {
+      ({ success } = await cdp.send('Target.closeTarget', { targetId }));
+    } finally {
+      cdp.close();
+    }
+
+    // Best-effort: drop the local daemon socket for this tab. The daemon's own
+    // connection normally self-shuts-down on Target.detachedFromTarget, but this
+    // covers the case where it doesn't (or never started).
+    if (!IS_WINDOWS) { try { unlinkSync(sockPath(targetId)); } catch {} }
+
+    const remaining = pages.filter(p => p.targetId !== targetId);
+    writeFileSync(PAGES_CACHE, JSON.stringify(remaining), { mode: 0o600 });
+
+    if (success) {
+      console.log(`Closed tab ${targetId.slice(0, 8)}`);
+    } else {
+      console.error(`Failed to close tab ${targetId.slice(0, 8)} (already closed?)`);
+      process.exitCode = 1;
+    }
     return;
   }
 

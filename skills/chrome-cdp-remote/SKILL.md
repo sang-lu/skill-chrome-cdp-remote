@@ -88,8 +88,11 @@ scripts/cdp-remote.mjs type    <target> <text>         # Input.insertText at cur
 scripts/cdp-remote.mjs loadall <target> <selector> [ms]  # click "load more" until gone (default 1500ms between clicks)
 scripts/cdp-remote.mjs evalraw <target> <method> [json]  # raw CDP command passthrough
 scripts/cdp-remote.mjs open    [url]                  # open new tab
-scripts/cdp-remote.mjs stop    [target]               # stop daemon(s)
+scripts/cdp-remote.mjs close   <target>               # close a tab in the remote browser
+scripts/cdp-remote.mjs stop    [target]               # stop local daemon(s) only
 ```
+
+> **`stop` vs `close`:** `stop` only ends this CLI's local session (kills the per-tab daemon) — the tab stays open in the remote browser. `close` actually closes the tab remotely (`Target.closeTarget`). After a task that opened a tab (e.g. via `open`), close it with `close <target>` when done — otherwise it accumulates as an orphaned tab in the remote Chrome.
 
 ## Coordinates
 
